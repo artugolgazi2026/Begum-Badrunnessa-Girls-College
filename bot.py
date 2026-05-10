@@ -83,26 +83,26 @@ def get_data(tid):
 async def process_student_results(update_or_query, data_list):
     msg_source = update_or_query.message if hasattr(update_or_query, 'message') else update_or_query
     
-    final_output = "📄 <b>BBGGC Payment Result</b>\n\n"
+    final_output = "🏛️ <b>BBGGC Payment Result</b>\n\n"
     phones = []
     
     for i, data in enumerate(data_list, 1):
         final_output += (
-            f"📄 Result {i}\n"
+            f"🎯 Result {i}\n"
             f"<pre>"
-            f"Transaction Id: {data['id']}\n"
-            f"College: {data['college']}\n"
-            f"Name: {data['name']}\n"
-            f"Mobile: {data['mobile']}\n"
-            f"Roll: {data['roll']}\n"
-            f"Class Roll: {data['class_roll']}\n"
-            f"Reg: {data['reg']}\n"
-            f"Group: {data['group']}\n"
-            f"Subject: {data['subject']}\n"
-            f"Year: {data['year']}\n"
-            f"Session: {data['session']}\n"
-            f"Amount(BDT): {data['amount']}\n"
-            f"Date: {data['date']}"
+            f"🆔 Transaction Id: {data['id']}\n"
+            f"🏫 College: {data['college']}\n"
+            f"👤 Name: {data['name']}\n"
+            f"📳 Mobile: {data['mobile']}\n"
+            f"🔢 Roll: {data['roll']}\n"
+            f"📇 Class Roll: {data['class_roll']}\n"
+            f"🪪 Reg: {data['reg']}\n"
+            f"🔬 Group: {data['group']}\n"
+            f"🩺 Subject: {data['subject']}\n"
+            f"​​📆 Year: {data['year']}\n"
+            f"​​📅Session: {data['session']}\n"
+            f"💰 Amount(BDT): {data['amount']}\n"
+            f"🗓️ Date: {data['date']}"
             f"</pre>\n\n"
         )
         
