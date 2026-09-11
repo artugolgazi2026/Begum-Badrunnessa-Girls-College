@@ -28,7 +28,7 @@ def keep_alive():
     Thread(target=run_flask).start()
 
 # ----------- ২. কনফিগারেশন -----------
-BOT_TOKEN = "8692377700:AAFNdfbObaoLByUUNpz_aTIb4ZWxtsodpdI"
+BOT_TOKEN = "8692377700:AAEy13fU_35DJyd22LC8MbnlX2sYTBUm0pg"
 bot = telebot.TeleBot(BOT_TOKEN)
 
 user_modes = {}       # chat_id -> 'sonali' অথবা 'eshiksha'
