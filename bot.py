@@ -35,7 +35,6 @@ def index():
 
 # একাধিক টেম্প মেইল সাইট থেকে স্বয়ংক্রিয়ভাবে ইমেইল সংগ্রহ করার ফলব্যাক ফাংশন
 def get_temp_email(driver):
-    # একাধিক টেম্প মেইল সাইটের তালিকা
     sites = [
         {"url": "https://tempmailo.com/", "selector": "input[type='email'], #mail, .email"},
         {"url": "https://tempmail.id/", "selector": "input[type='email'], #mail, .email"},
@@ -44,18 +43,18 @@ def get_temp_email(driver):
     
     for site in sites:
         try:
-            print(Trying to fetch email from: {site['url']})
+            print(f"Trying to fetch email from: {site['url']}")
             driver.get(site["url"])
-            time.sleep(6) # পেজ লোড হওয়ার অপেক্ষা
+            time.sleep(6)
             
             email_field = driver.find_element(By.CSS_SELECTOR, site["selector"])
             temp_email = email_field.get_attribute("value") or email_field.text
             
             if temp_email and "@" in temp_email:
-                print(Successfully got email: {temp_email})
+                print(f"Successfully got email: {temp_email}")
                 return temp_email
         except Exception as e:
-            print(Failed with {site['url']}: {str(e)})
+            print(f"Failed with {site['url']}: {str(e)}")
             continue
             
     return None
@@ -63,12 +62,10 @@ def get_temp_email(driver):
 # অ্যাকাউন্ট তৈরি ও লগইন করার মূল ফাংশন
 def create_account_and_login(driver):
     try:
-        # ১. ফলব্যাক সিস্টেম ব্যবহার করে যেকোনো একটি সচল সাইট থেকে ইমেল আনা
         temp_email = get_temp_email(driver)
         if not temp_email:
             raise Exception("কোনো টেম্প মেইল সাইট থেকে ইমেল পাওয়া যায়নি!")
             
-        # ২. UndressAI ওয়েবসাইটে সাইন আপ / লগইন করা
         driver.execute_script("window.open('');")
         driver.switch_to.window(driver.window_handles[1])
         driver.get("https://www.undressai.shop/")
@@ -112,7 +109,6 @@ def send_welcome(message):
 def handle_photo(message):
     sent_msg = bot.reply_to(message, "🧭 নতুন অ্যাকাউন্ট সেটআপ করে ছবি প্রসেস করা হচ্ছে...")
     
-    # টেলিগ্রাম থেকে ছবি ডাউনলোড করা
     file_info = bot.get_file(message.photo[-1].file_id)
     downloaded_file = bot.download_file(file_info.file_path)
     
@@ -124,28 +120,24 @@ def handle_photo(message):
     try:
         driver = get_driver()
         
-        # ছবি আপলোডের আগে নতুন অ্যাকাউন্ট তৈরি করে নেওয়া
         success = create_account_and_login(driver)
         if not success:
             raise Exception("স্বয়ংক্রিয় লগইন ব্যর্থ হয়েছে।")
         
-        # ছবি আপলোড এবং জেনারেট সেকশন
         file_input = driver.find_element(By.XPATH, "//input[@type='file']")
         file_input.send_keys(os.path.abspath(image_path))
         time.sleep(4)
         
         generate_btn = driver.find_element(By.XPATH, "//button[contains(text(), 'Generate')]")
         generate_btn.click()
-        time.sleep(20) # ইমেজ জেনারেট হওয়ার অপেক্ষা
+        time.sleep(20)
         
-        # রেজাল্ট সেভ করা
         result_image_path = "result.jpg"
         driver.save_screenshot(result_image_path)
         
         driver.quit()
         driver = None
         
-        # প্রসেসিং মেসেজ ডিলিট করে ছবি পাঠানো
         bot.delete_message(message.chat.id, sent_msg.message_id)
         with open(result_image_path, 'rb') as photo:
             bot.send_photo(message.chat.id, photo, caption="✨ আপনার পোশাক পরিবর্তিত ছবিটি তৈরি হয়ে গেছে!\n\nপরবর্তী ছবির জন্য আবার ছবি পাঠাতে পারেন।")
