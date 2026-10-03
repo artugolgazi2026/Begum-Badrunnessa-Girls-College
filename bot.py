@@ -33,19 +33,40 @@ def webhook():
 def index():
     return "Telegram Bot is running smoothly!", 200
 
-# স্বয়ংক্রিয়ভাবে অ্যাকাউন্ট তৈরি ও লগইন করার ফাংশন
+# একাধিক টেম্প মেইল সাইট থেকে স্বয়ংক্রিয়ভাবে ইমেইল সংগ্রহ করার ফলব্যাক ফাংশন
+def get_temp_email(driver):
+    # একাধিক টেম্প মেইল সাইটের তালিকা
+    sites = [
+        {"url": "https://tempmailo.com/", "selector": "input[type='email'], #mail, .email"},
+        {"url": "https://tempmail.id/", "selector": "input[type='email'], #mail, .email"},
+        {"url": "https://10minutemail.com/", "selector": "input[type='email'], #mail, #mail_address"}
+    ]
+    
+    for site in sites:
+        try:
+            print(Trying to fetch email from: {site['url']})
+            driver.get(site["url"])
+            time.sleep(6) # পেজ লোড হওয়ার অপেক্ষা
+            
+            email_field = driver.find_element(By.CSS_SELECTOR, site["selector"])
+            temp_email = email_field.get_attribute("value") or email_field.text
+            
+            if temp_email and "@" in temp_email:
+                print(Successfully got email: {temp_email})
+                return temp_email
+        except Exception as e:
+            print(Failed with {site['url']}: {str(e)})
+            continue
+            
+    return None
+
+# অ্যাকাউন্ট তৈরি ও লগইন করার মূল ফাংশন
 def create_account_and_login(driver):
     try:
-        # ১. Temp Mail থেকে নতুন জিমেইল নেওয়া (অন্য একটি স্টেবল টেম্প মেইল সাই트 ব্যবহার করা হলো)
-        driver.get("https://tempmail.id/")
-        time.sleep(6)
-            
-        # ইমেল ফিল্ড খুঁজে বের করা
-        email_field = driver.find_element(By.CSS_SELECTOR, "input[type='email'], #mail, .email")
-        temp_email = email_field.get_attribute("value")
+        # ১. ফলব্যাক সিস্টেম ব্যবহার করে যেকোনো একটি সচল সাইট থেকে ইমেল আনা
+        temp_email = get_temp_email(driver)
         if not temp_email:
-            # যদি ভ্যালু না পাওয়া যায় অন্য এট্রিবিউট চেক করা
-            temp_email = email_field.text
+            raise Exception("কোনো টেম্প মেইল সাইট থেকে ইমেল পাওয়া যায়নি!")
             
         # ২. UndressAI ওয়েবসাইটে সাইন আপ / লগইন করা
         driver.execute_script("window.open('');")
@@ -69,7 +90,7 @@ def create_account_and_login(driver):
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    sent_msg = bot.reply_to(message, "⏳ নতুন অ্যাকাউন্ট তৈরি করা হচ্ছে, দয়া করে একটু অপেক্ষা করুন...")
+    sent_msg = bot.reply_to(message, "⏳ ব্যাকআপ সার্ভার থেকে নতুন অ্যাকাউন্ট তৈরি করা হচ্ছে, দয়া করে একটু অপেক্ষা করুন...")
     
     driver = None
     try:
@@ -77,8 +98,7 @@ def send_welcome(message):
         success = create_account_and_login(driver)
         
         if success:
-            # সেশন বা ড্রাইভার সেভ করে রাখা যায় অথবা ইউজারের জন্য প্রস্তুত বলা যায়
-            bot.edit_message_text("✅ অ্যাকাউন্ট তৈরি ও লগইন সম্পূর্ণ হয়েছে!\n\n✨ এখন দয়া করে আপনার ছবিটি আপলোড করুন।", message.chat.id, sent_msg.message_id)
+            bot.edit_message_text("✅ অ্যাকাউন্ট তৈরি ও লগইন সফল হয়েছে!\n\n✨ এখন দয়া করে আপনার ছবিটি আপলোড করুন।", message.chat.id, sent_msg.message_id)
         else:
             bot.edit_message_text("❌ অ্যাকাউন্ট তৈরি করতে সমস্যা হয়েছে। আবার /start দিন।", message.chat.id, sent_msg.message_id)
             
@@ -90,7 +110,7 @@ def send_welcome(message):
 
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
-    sent_msg = bot.reply_to(message, "🧭 প্রসেসিং চলছে এবং নতুন অ্যাকাউন্ট সেটআপ হচ্ছে...")
+    sent_msg = bot.reply_to(message, "🧭 নতুন অ্যাকাউন্ট সেটআপ করে ছবি প্রসেস করা হচ্ছে...")
     
     # টেলিগ্রাম থেকে ছবি ডাউনলোড করা
     file_info = bot.get_file(message.photo[-1].file_id)
@@ -104,7 +124,7 @@ def handle_photo(message):
     try:
         driver = get_driver()
         
-        # প্রতিবার ছবি আপলোডের আগে নতুন অ্যাকাউন্ট তৈরি করে নেওয়া
+        # ছবি আপলোডের আগে নতুন অ্যাকাউন্ট তৈরি করে নেওয়া
         success = create_account_and_login(driver)
         if not success:
             raise Exception("স্বয়ংক্রিয় লগইন ব্যর্থ হয়েছে।")
