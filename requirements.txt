@@ -1,7 +1,4 @@
-python-telegram-bot==20.7
-flask
-requests
-beautifulsoup4
-Pillow
-pypdf
-pyTelegramBotAPI
+Flask==3.0.2
+pyTelegramBotAPI==4.16.1
+selenium==4.18.1
+gunicorn==21.2.0
