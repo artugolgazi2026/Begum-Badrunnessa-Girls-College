@@ -1,75 +1,138 @@
-import os
+import time
+import random
+import string
 import requests
-from flask import Flask, request as flask_request
-from telebot import TeleBot, types
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ConversationHandler,
+    ContextTypes,
+    filters,
+)
 
-# আপনার টেলিগ্রাম বটের টোকেন
-TOKEN = "8918915414:AAEyXjap-85zqeb4TcgtCfFf-gJXst2q6nw"
-bot = TeleBot(TOKEN)
-app = Flask(__name__)
+BOT_TOKEN = "8918915414:AAFLzvQJNY9a-oSaJo_GfhA08CCLpLIznDU"
+BASE_URL = "https://www.undressai.shop"
+GENERATE_URL = f"{BASE_URL}/api/generate"
 
-# Flask Webhook Route
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    json_str = flask_request.get_data().decode("UTF-8")
-    update = types.Update.de_json(json_str)
-    bot.process_new_updates([update])
-    return "OK", 200
+# কনভার্সেশন স্টেটসমূহ
+WAITING_FOR_EMAIL_INPUT, WAITING_FOR_COOKIE_INPUT, WAITING_FOR_IMAGE = range(3)
 
-@app.route("/", methods=["GET"])
-def index():
-    return "Telegram Bot is running smoothly!", 200
+# র‍্যান্ডম টেম্পোরারি জিমেইল জেনারেটর ফাংশন
+def generate_random_email():
+    random_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
+    return f"{random_str}@aminavin.com"
 
-# ফ্রি এপিআই ব্যবহার করে খুব দ্রুত একটি নতুন টেম্প মেইল জেনারেট করার ফাংশন
-def generate_fresh_email():
+# /start কমান্ড দিয়ে জিমেইল তৈরি ও ওয়েবসাইটের লিংক পাঠানো
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    generated_email = generate_random_email()
+    context.user_data["temp_email"] = generated_email
+    
+    msg_text = (
+        "✉️ <b>নতুন টেম্পোরারি জিমেইল প্রস্তুত!</b>\n\n"
+        "১. নিচের জিমেইলটির ওপর এক ক্লিক করে কপি করুন:\n"
+        f"<code>{generated_email}</code>\n\n"
+        "২. এখন নিচের লিংকে ক্লিক করে ওয়েবসাইটে যান এবং এই জিমেইল দিয়ে একটি অ্যাকাউন্ট তৈরি করুন:\n"
+        f"🔗 <a href='{BASE_URL}'>ওয়েবসাইটে যান</a>\n\n"
+        "৩. অ্যাকাউন্ট তৈরি করার পর ব্রাউজার থেকে আপনার **Session Cookie / Authorization Token** কপি করে এই চ্যাটে পেস্ট করুন:"
+    )
+    
+    await update.message.reply_text(msg_text, parse_mode="HTML", disable_web_page_preview=True)
+    return WAITING_FOR_COOKIE_INPUT
+
+# কুকিজ বা টোকেন রিসিভ করে সেশন সেটআপ করা
+async def receive_cookie_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_cookie = update.message.text.strip()
+    
+    # নতুন সেশন অবজেক্ট তৈরি
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Origin": BASE_URL,
+        "Referer": f"{BASE_URL}/generate",
+        # ইউজার যে কুকিজ বা টোকেন পাঠাবে তা এখানে সেট করা হচ্ছে (প্রয়োজন অনুযায়ী হেডার বা কুকি ফরম্যাট বদলাতে হতে পারে)
+        "Cookie": user_cookie  # অথবা "Authorization": f"Bearer {user_cookie}"
+    })
+    
+    context.user_data["session"] = session
+    
+    await update.message.reply_text(
+        "✅ <b>সেশন কুকিজ সফলভাবে যুক্ত হয়েছে!</b>\n\n"
+        "দয়া করে এখন যে ছবিটির আন্ডড্রেসিং করতে চান সেটি <b>ফটো (Photo)</b> আকারে পাঠিয়ে দিন:",
+        parse_mode="HTML"
+    )
+    return WAITING_FOR_IMAGE
+
+# ছবি রিসিভ করে কিউতে দিয়ে প্রসেস করা এবং ফাইনাল ছবি নিয়ে আসা
+async def handle_image_and_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    photo_file = await update.message.photo[-1].get_file()
+    photo_bytes = await photo_file.download_as_bytearray()
+    
+    wait_msg = await update.message.reply_text("⏳ আপনার ছবিটি কিউতে (Queue) দেওয়া হয়েছে, প্রসেসিং চলছে...")
+    
     try:
-        # mail.tm এর ফ্রি পাবলিক এপিআই ব্যবহার করে জিমেইল/ইমেল নেওয়া
-        response = requests.get("https://api.mail.tm/domains")
+        session = context.user_data.get("session", requests.Session())
+        files = {"image": ("target.jpg", bytes(photo_bytes), "image/jpeg")}
+        
+        # ১. জেনারেশন রিকোয়েস্ট পাঠানো
+        response = session.post(GENERATE_URL, files=files, timeout=60)
+        
         if response.status_code == 200:
-            domain = response.json()['hydra:member'][0]['domain']
-            # একটি র্যান্ডম ইউজারনেম তৈরি করা
-            import random
-            import string
-            username = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
-            email = f"{username}@{domain}"
-            return email
+            res_data = response.json()
+            if res_data.get("success") or "promptId" in res_data:
+                prompt_id = res_data.get("promptId")
+                await wait_msg.edit_text(f"⏳ ছবি প্রসেস হচ্ছে (Prompt ID: {prompt_id})। অনুগ্রহ করে কয়েক সেকেন্ড অপেক্ষা করুন...")
+                
+                # ২. প্রসেসিং সম্পন্ন হওয়ার জন্য ১০ সেকেন্ড অপেক্ষা করা
+                time.sleep(10) 
+                
+                # ৩. রেজাল্ট ফেচ করার এন্ডপয়েন্ট কল করা
+                result_url = f"{BASE_URL}/api/result?promptId={prompt_id}"
+                result_res = session.get(result_url, timeout=30)
+                
+                if result_res.status_code == 200 and len(result_res.content) > 1000:
+                    await update.message.reply_photo(
+                        photo=result_res.content,
+                        caption="🎉 আপনার ছবিটি সফলভাবে প্রসেস করা হয়েছে!\n\n🔄 নতুন সেশন শুরু করতে চাইলে আবার /start দিন।"
+                    )
+                    await wait_msg.delete()
+                else:
+                    await wait_msg.edit_text("❌ প্রসেসিং এখনো সম্পন্ন হয়নি বা সঠিক ছবি পাওয়া যায়নি। আবার /start দিন।")
+            else:
+                error_msg = res_data.get("message", "Unknown error")
+                await wait_msg.edit_text(f"❌ সার্ভার থেকে এরর এসেছে: {error_msg}")
+        else:
+            await wait_msg.edit_text(f"❌ রিকোয়েস্ট ফেল করেছে। স্ট্যাটাস কোড: {response.status_code}")
+            
     except Exception as e:
-        print(f"API Error: {str(e)}")
-    
-    # যদি এপিআই কাজ না করে তবে ফলব্যাক হিসেবে একটি ইউনিক টেম্প মেইল ফরম্যাট বা অন্য পদ্ধতি
-    import time
-    return f"user_{int(time.time())}@1secmail.com"
+        await wait_msg.edit_text(f"⚠️ প্রসেসিং ত্রুটি: {e}")
+        
+    context.user_data.clear()
+    return ConversationHandler.END
 
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    email = generate_fresh_email()
-    
-    # ব্যবহারকারীকে জিমেইল কপি করার মতো করে সুন্দরভাবে পাঠিয়ে দেওয়া
-    response_text = (
-        "✨ **নতুন অ্যাকাউন্ট সেটআপ করার জন্য জিমেইল প্রস্তুত!**\n\n"
-        f"📧 **Email:** `{email}`\n"
-        f"🔑 **Password:** `{email}`\n\n"
-        "👉 **ধাপসমূহ:**\n"
-        "১. উপরের জিমেইলে টাচ করে কপি করুন এবং ওয়েবসাইটের **Sign Up / Login** এ ইমেল ও পাসওয়ার্ড হিসেবে দিন।\n"
-        "২. অ্যাকাউন্ট তৈরি হয়ে গেলে আপনার ছবিটি এখানে আপলোড করুন!"
-    )
-    
-    bot.send_message(message.chat.id, response_text, parse_mode="Markdown")
-
-@bot.message_handler(content_types=['photo'])
-def handle_photo(message):
-    bot.reply_to(message, "📥 আপনার ছবি পেয়েছি! ওয়েবসাইট থেকে জেনারেট হয়ে আসলে বট আপনাকে পরবর্তী নতুন জিমেইল পাঠিয়ে দেবে।\n\n*নোট: কাজ শেষে নতুন অ্যাকাউন্টের জন্য আবার /start বা নতুন জিমেইল নিতে পারেন।*")
-    
-    # পরবর্তী কাজের জন্য সাথে সাথে আরেকটি নতুন জিমেইল জেনারেট করে দিয়ে দেওয়া যাতে ব্যবহারকারী থামতে না হয়
-    next_email = generate_fresh_email()
-    next_text = (
-        "🔄 **পরবর্তী অ্যাকাউন্টের জন্য নতুন জিমেইল:**\n\n"
-        f"📧 **Email:** `{next_email}`\n"
-        f"🔑 **Password:** `{next_email}`\n\n"
-        "👉 আগের অ্যাকাউন্ট দিয়ে কাজ শেষ হলে এই নতুন জিমেইলটি ব্যবহার করুন।"
-    )
-    bot.send_message(message.chat.id, next_text, parse_mode="Markdown")
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("অপারেশন বাতিল করা হয়েছে। নতুন করে শুরু করতে /start দিন।")
+    context.user_data.clear()
+    return ConversationHandler.END
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("start", start)],
+        states={
+            WAITING_FOR_COOKIE_INPUT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_cookie_input)
+            ],
+            WAITING_FOR_IMAGE: [
+                MessageHandler(filters.PHOTO, handle_image_and_process)
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+    app.add_handler(conv_handler)
+
+    print("বট সফলভাবে চালু হয়েছে...")
+    app.run_polling()
