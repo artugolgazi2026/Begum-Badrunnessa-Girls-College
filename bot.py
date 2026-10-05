@@ -6,7 +6,7 @@ from flask import Flask
 import telebot
 from telebot import types
 
-TOKEN = '8636909610:AAEevxegxC7GcP0ICXAPJ8Gw7TYkMe-l4Cw'
+TOKEN = '8636909610:AAEPBzT3QvTjCgTU6sNoTqnXCqrSyygNorA'
 bot = telebot.TeleBot(TOKEN)
 
 # Flask অ্যাপ তৈরি করা (Render-এর জন্য দরকার)
