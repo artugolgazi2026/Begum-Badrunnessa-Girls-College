@@ -1,295 +1,224 @@
 import os
-import requests
-from bs4 import BeautifulSoup
-from flask import Flask, Response
-from threading import Thread
+import threading
 import time
+import requests
+from flask import Flask
+import telebot
+from telebot import types
 
-from telegram import (
-    Update,
-    ReplyKeyboardMarkup
-)
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    MessageHandler,
-    filters,
-    ContextTypes
-)
+TOKEN = '8636909610:AAEevxegxC7GcP0ICXAPJ8Gw7TYkMe-l4Cw'
+bot = telebot.TeleBot(TOKEN)
 
-TOKEN = "8636909610:AAEevxegxC7GcP0ICXAPJ8Gw7TYkMe-l4Cw"
-SERVER_URL = "https://begum-badrunnessa-girls-college.onrender.com" 
+# Flask অ্যাপ তৈরি করা (Render-এর জন্য দরকার)
+app = Flask(__name__)
 
-users = {}
 
-# ===== FLASK KEEP ALIVE & DYNAMIC CAPTCHA VIEW ROUTE =====
-app_flask = Flask('')
-
-@app_flask.route('/')
+@app.route('/')
 def home():
-    return "Result Bot with Live Captcha is alive!"
+  return 'Telegram Result Bot is running successfully!'
 
-@app_flask.route('/view_captcha/<int:chat_id>')
-def view_captcha(chat_id):
-    if chat_id in users and "session" in users[chat_id]:
-        try:
-            session = users[chat_id]["session"]
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Referer": "https://eboardresults.com/v2/home",
-                "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
-            }
-            captcha_url = f"https://eboardresults.com/v2/captcha?t={int(time.time() * 1000)}"
-            r = session.get(captcha_url, headers=headers)
-            if r.status_code == 200 and len(r.content) > 100:
-                return Response(r.content, mimetype='image/jpeg')
-        except Exception:
-            pass
-    return "❌ ক্যাপচা পাওয়া যায়নি অথবা সেশন শেষ হয়ে গেছে!", 404
 
-def run():
-    port = int(os.environ.get("PORT", 8080))
-    app_flask.run(host='0.0.0.0', port=port)
+# ইউজারদের ডেটা সাময়িকভাবে সংরক্ষণ করার জন্য
+user_data = {}
 
-def keep_alive():
-    t = Thread(target=run)
-    t.daemon = True
-    t.start()
 
-# ================= MAIN MENU =================
-def main_menu():
-    return ReplyKeyboardMarkup([
-        ["🚀 রেজাল্ট বের করুন 🚀"],
-        ["⁉️ Help & Info.", "⭐ Rate us"],
-        ["📊 Statistics", "🔮 Developer Info."]
-    ], resize_keyboard=True)
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message):
+  bot.reply_to(
+      message,
+      'স্বাগতম! টেলিগ্রামের মাধ্যমে রেজাল্ট জানতে /result কমান্ডটি ব্যবহার করুন।',
+  )
 
-# ================= START =================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat
-    if not chat:
-        return
-    users[chat.id] = {}
-    await update.message.reply_text(
-        "🎉 Welcome!\n\nResult দেখতে নিচের বাটনে চাপ দিন 👇",
-        reply_markup=main_menu()
+
+@bot.message_handler(commands=['result'])
+def get_result_start(message):
+  chat_id = message.chat.id
+  user_data[chat_id] = {}
+
+  markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+  markup.add('dhaka', 'barisal', 'chittagong', 'comilla')
+  markup.add('jessore', 'rajshahi', 'sylhet', 'dinajpur', 'madrasah')
+
+  msg = bot.send_message(
+      chat_id, 'বোর্ডের নাম সিলেক্ট করুন বা লিখুন (যেমন: dhaka):', reply_markup=markup
+  )
+  bot.register_next_step_handler(msg, process_board_step)
+
+
+def process_board_step(message):
+  chat_id = message.chat.id
+  user_data[chat_id]['board'] = message.text.lower()
+
+  markup = types.ReplyKeyboardMarkup(one_time_keyboard=True, resize_keyboard=True)
+  markup.add('ssc', 'hsc', 'jsc')
+  msg = bot.send_message(
+      chat_id, 'পরীক্ষার নাম সিলেক্ট করুন (যেমন: ssc):', reply_markup=markup
+  )
+  bot.register_next_step_handler(msg, process_exam_step)
+
+
+def process_exam_step(message):
+  chat_id = message.chat.id
+  user_data[chat_id]['exam'] = message.text.lower()
+
+  msg = bot.send_message(chat_id, 'পাশের বছর লিখুন (যেমন: 2026):')
+  bot.register_next_step_handler(msg, process_year_step)
+
+
+def process_year_step(message):
+  chat_id = message.chat.id
+  user_data[chat_id]['year'] = message.text
+
+  msg = bot.send_message(chat_id, 'রোল নম্বর লিখুন:')
+  bot.register_next_step_handler(msg, process_roll_step)
+
+
+def process_roll_step(message):
+  chat_id = message.chat.id
+  user_data[chat_id]['roll'] = message.text
+
+  msg = bot.send_message(chat_id, 'রেজিস্ট্রেশন নম্বর লিখুন:')
+  bot.register_next_step_handler(msg, process_reg_step)
+
+
+def process_reg_step(message):
+  chat_id = message.chat.id
+  user_data[chat_id]['reg'] = message.text
+
+  bot.send_message(
+      chat_id, 'ক্যাপচা লোড করা হচ্ছে, দয়া করে একটু অপেক্ষা করুন...'
+  )
+
+  try:
+    session = requests.Session()
+    headers = {
+        'User-Agent': (
+            'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like'
+            ' Gecko) Chrome/139.0.0.0 Mobile Safari/537.36'
+        ),
+        'Referer': 'https://eboardresults.com/v2/home',
+        'Origin': 'https://eboardresults.com',
+    }
+
+    session.get('https://eboardresults.com/v2/home', headers=headers)
+
+    timestamp_captcha = str(int(time.time() * 1000))
+    captcha_url = (
+        f'https://eboardresults.com/v2/captcha?t={timestamp_captcha}'
     )
 
-# ================= HANDLE MESSAGES =================
-async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat = update.effective_chat
-    if not chat:
-        return
-    chat_id = chat.id
+    captcha_res = session.get(captcha_url, headers=headers)
+    captcha_path = f'captcha_{chat_id}.jpg'
 
-    message = update.message
-    if not message or not message.text:
-        return
+    with open(captcha_path, 'wb') as f:
+      f.write(captcha_res.content)
 
-    text = message.text.strip()
+    user_data[chat_id]['session'] = session
+    user_data[chat_id]['timestamp'] = timestamp_captcha
 
-    if chat_id not in users:
-        users[chat_id] = {}
+    with open(captcha_path, 'rb') as photo:
+      msg = bot.send_photo(
+          chat_id,
+          photo,
+          caption=(
+              'নিচের ছবিতে থাকা **ক্যাপচা কোডটি** দেখে এখানে শুধু সংখ্যাগুলো'
+              ' লিখে পাঠান:'
+          ),
+      )
 
-    data = users[chat_id]
+    if os.path.exists(captcha_path):
+      os.remove(captcha_path)
 
-    if text == "🚀 রেজাল্ট বের করুন 🚀":
-        users[chat_id] = {"step": "exam"}
-        keyboard = [["JSC/JDC", "SSC/Dakhil"], ["HSC/Alim", "DIBS"]]
-        await message.reply_text("📘 Exam নির্বাচন করুন:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
-        return
+    bot.register_next_step_handler(msg, process_captcha_step)
 
-    step = data.get("step")
+  except Exception as e:
+    bot.send_message(
+        chat_id, f'ক্যাপচা লোড করতে সমস্যা হয়েছে: {str(e)}'
+    )
 
-    if step == "exam" or "exam" not in data:
-        data["exam"] = text.split("/")[0].lower()
-        data["step"] = "year"
-        keyboard = [["2026","2025","2024"], ["2023","2022","2021"], ["2020","2019","2018"], ["➡️ Next Page"]]
-        await message.reply_text("📅 Year নির্বাচন করুন:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
-        return
 
-    if step == "year" or "year" not in data:
-        if "Next" in text:
-            await message.reply_text("👉 Older year selection is coming soon!")
-            return
-        data["year"] = text
-        data["step"] = "board"
-        keyboard = [["Dhaka","Rajshahi","Cumilla"], ["Chattogram","Sylhet","Barishal"], ["Dinajpur","Jashore","Mymensingh"], ["Madrasha","Technical"]]
-        await message.reply_text("🏫 Board নির্বাচন করুন:", reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True))
-        return
+def process_captcha_step(message):
+  chat_id = message.chat.id
+  captcha_text = message.text.strip()
+  data = user_data.get(chat_id)
 
-    if step == "board" or "board" not in data:
-        data["board"] = text.lower()
-        data["step"] = "roll"
-        await message.reply_text("🆔 Roll লিখুন:")
-        return
+  if not data:
+    bot.send_message(
+        chat_id, 'সেশন মেয়াদোত্তীর্ণ হয়ে গেছে। দয়া করে আবার /result লিখুন।'
+    )
+    return
 
-    if step == "roll" or "roll" not in data:
-        data["roll"] = text
-        data["step"] = "reg"
-        await message.reply_text("📄 Registration লিখুন:")
-        return
+  bot.send_message(chat_id, 'রেজাল্ট যাচাই করা হচ্ছে...')
 
-    if step == "reg" or "reg" not in data:
-        data["reg"] = text
-        
-        loading_msg = await message.reply_text("⏳ সিকিউর সেশন তৈরি করা হচ্ছে...")
+  payload = {
+      'board': data['board'],
+      'exam': data['exam'],
+      'year': data['year'],
+      'result_type': '1',
+      'roll': data['roll'],
+      'reg': data['reg'],
+      'eiin': '',
+      'dcode': '',
+      'ccode': '',
+      'captcha': captcha_text,
+  }
 
-        try:
-            session = requests.Session()
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "Referer": "https://eboardresults.com/v2/home",
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
-            }
-            
-            session.get("https://eboardresults.com/v2/home", headers=headers)
-            
-            captcha_url = f"https://eboardresults.com/v2/captcha?t={int(time.time() * 1000)}"
-            r = session.get(captcha_url, headers=headers)
-            
-            if r.status_code == 200 and len(r.content) > 100:
-                data["session"] = session
-                data["captcha_bytes"] = r.content
-                data["step"] = "captcha"
-                
-                await loading_msg.delete()
+  headers = {
+      'User-Agent': (
+          'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like'
+          ' Gecko) Chrome/139.0.0.0 Mobile Safari/537.36'
+      ),
+      'Referer': 'https://eboardresults.com/v2/home',
+      'Origin': 'https://eboardresults.com',
+  }
 
-                captcha_link = f"{SERVER_URL}/view_captcha/{chat_id}"
+  try:
+    session = data['session']
+    response = session.post(
+        'https://eboardresults.com/v2/getres', data=payload, headers=headers
+    )
+    res_json = response.json()
 
-                await message.reply_text(
-                    "🔗 **আপনার জন্য ক্যাপচা লিংক তৈরি করা হয়েছে:**\n\n"
-                    f"১. [এখানে ক্লিক করে ক্যাপচাটি দেখুন]({captcha_link})\n"
-                    "২. লিংকে যে ক্যাপচা দেখতে পাবেন, তার কোডটি এখানে লিখে পাঠান:",
-                    parse_mode="Markdown",
-                    reply_markup=ReplyKeyboardMarkup([["🔄 Reload Captcha"]], resize_keyboard=True)
-                )
-            else:
-                await loading_msg.delete()
-                await message.reply_text("❌ ক্যাপচা ইমেজ লোড হয়নি। আবার চেষ্টা করুন।")
-                users[chat_id] = {}
-        except Exception as e:
-            await loading_msg.delete()
-            await message.reply_text(f"❌ ত্রুটি ঘটেছে: {str(e)}")
-            users[chat_id] = {}
-        return
+    if res_json.get('status') == 0:
+      res_info = res_json.get('res', {})
 
-    if text == "🔄 Reload Captcha":
-        if chat_id in data and "session" in data:
-            loading_msg = await message.reply_text("🔄 নতুন ক্যাপচা লোড করা হচ্ছে...")
-            try:
-                session = data["session"]
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    "Referer": "https://eboardresults.com/v2/home"
-                }
-                captcha_url = f"https://eboardresults.com/v2/captcha?t={int(time.time() * 1000)}"
-                r = session.get(captcha_url, headers=headers)
-                if r.status_code == 200 and len(r.content) > 100:
-                    data["captcha_bytes"] = r.content
-                    await loading_msg.delete()
-                    captcha_link = f"{SERVER_URL}/view_captcha/{chat_id}"
-                    await message.reply_text(
-                        f"🔄 নতুন ক্যাপচা লিংক:\n[এখানে ক্লিক করে ক্যাপচা দেখুন]({captcha_link})\nকোডটি এখানে লিখে পাঠান:",
-                        parse_mode="Markdown"
-                    )
-                else:
-                    await loading_msg.delete()
-                    await message.reply_text("❌ ক্যাপচা রিলোড করতে সমস্যা হয়েছে।")
-            except Exception:
-                await loading_msg.delete()
-                await message.reply_text("❌ ক্যাপচা রিলোড করতে সমস্যা হয়েছে।")
-        return
+      name = res_info.get('name', 'N/A')
+      father_name = res_info.get('fname', 'N/A')
+      mother_name = res_info.get('mname', 'N/A')
+      gpa = res_info.get('res_details', 'N/A')
+      institute = res_info.get('inst_name', 'N/A')
 
-    if step == "captcha" or "captcha" not in data:
-        data["captcha"] = text
-        loading_msg = await message.reply_text("⏳ রেজাল্ট যাচাই করা হচ্ছে...")
+      reply_text = (
+          f"🎓 **রেজাল্ট বিবরণী**\n\n"
+          f"👤 নাম: {name}\n"
+          f"👨‍👧 পিতার নাম: {father_name}\n"
+          f"👩‍👧 মাতার নাম: {mother_name}\n"
+          f"🏫 প্রতিষ্ঠান: {institute}\n"
+          f"📊 ফলাফল / GPA: {gpa}\n"
+      )
+      bot.send_message(chat_id, reply_text, parse_mode='Markdown')
+    else:
+      bot.send_message(
+          chat_id,
+          '❌ ভুল ক্যাপচা অথবা তথ্য মিলছে না! আবার নতুন করে চেষ্টার জন্য'
+          ' /result লিখুন।',
+      )
 
-        payload = {
-            "board": data["board"],
-            "exam": data["exam"],
-            "year": data["year"],
-            "result_type": "1",
-            "roll": data["roll"],
-            "reg": data["reg"],
-            "captcha": data["captcha"]
-        }
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "X-Requested-With": "XMLHttpRequest",
-            "Origin": "https://eboardresults.com",
-            "Referer": "https://eboardresults.com/v2/home",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
+  except Exception as e:
+    bot.send_message(chat_id, f'একটি ত্রুটি ঘটেছে: {str(e)}')
 
-        try:
-            res = data["session"].post("https://eboardresults.com/v2/getres", data=payload, headers=headers)
-            result = res.json()
-            await loading_msg.delete()
 
-            if result.get("status") != 0:
-                await message.reply_text("❌ Captcha ভুল অথবা সার্ভার এরর! নতুন ক্যাপচার জন্য লিংক দেওয়া হলো।")
-                session = data["session"]
-                captcha_url = f"https://eboardresults.com/v2/captcha?t={int(time.time() * 1000)}"
-                r = session.get(captcha_url)
-                if r.status_code == 200:
-                    data["captcha_bytes"] = r.content
-                    data["step"] = "captcha"
-                    captcha_link = f"{SERVER_URL}/view_captcha/{chat_id}"
-                    await message.reply_text(
-                        f"🔗 [এখানে ক্লিক করে নতুন ক্যাপচা দেখুন]({captcha_link})",
-                        parse_mode="Markdown"
-                    )
-                return
+# টেলিগ্রাম বট ব্যাকগ্রাউন্ড থ্রেডে রান করার ফাংশন
+def run_bot():
+  print('Telegram Bot is starting...')
+  bot.infinity_polling()
 
-            info = result["res"]
-            gpa = info.get("res_detail","N/A").replace("GPA=","")
-            
-            sex = str(info.get("sex")).strip().lower()
-            gender = "FEMALE" if sex in ["1", "f", "female"] else "MALE" if sex in ["2", "0", "m", "male"] else "UNKNOWN"
 
-            # সাবজেক্ট ওয়াইজ রেজাল্ট ও গ্রেড সাজানো
-            subjects_text = ""
-            sub_details = info.get("sub_details", [])
-            if sub_details:
-                subjects_text = "\n📚 <b>SUBJECT-WISE GRADES</b>\n━━━━━━━━━━━━━━━\n"
-                for sub in sub_details:
-                    sub_name = sub.get("SUB_NAME", "Unknown")
-                    sub_grade = sub.get("GRADE", "N/A")
-                    subjects_text += f"▪️ {sub_name}: <b>{sub_grade}</b>\n"
+if __name__ == '__main__':
+  # বটকে আলাদা থ্রেডে চালু করা যাতে Flask সার্ভার একসাথে পোর্ট ধরতে পারে
+  t = threading.Thread(target=run_bot)
+  t.start()
 
-            # শিক্ষার্থীর নাম, বাবা-মা ও অন্যান্য তথ্য সহ সম্পূর্ণ মেসেজ ফরম্যাট
-            msg = f"""
-👨‍🎓 <b>STUDENT INFORMATION</b>
-━━━━━━━━━━━━━━━
-👤 Name: {info.get('name', 'N/A')}
-👨 Father: {info.get('fname', 'N/A')}
-👩 Mother: {info.get('mname', 'N/A')}
-📅 DOB: {info.get('dob', 'N/A')}
-🚻 Gender: {gender}
-
-📘 <b>{data['exam'].upper()} RESULT {data['year']}</b>
-━━━━━━━━━━━━━━━
-🆔 Roll: {data['roll']}
-📄 Reg: {data['reg']}
-🏫 Board: {info.get('board_name', 'N/A')}
-📊 Result: PASSED
-⭐ GPA: {gpa}
-🏫 Institute: {info.get('inst_name', 'N/A')}
-{subjects_text}
-"""
-            await message.reply_text(msg, parse_mode="HTML", reply_markup=main_menu())
-            users[chat_id] = {}
-        except Exception as e:
-            await loading_msg.delete()
-            await message.reply_text(f"❌ রেজাল্ট আনতে সমস্যা হয়েছে। আবার শুরু করুন। ত্রুটি: {str(e)}")
-            users[chat_id] = {}
-
-# ================= RUN =================
-if __name__ == "__main__":
-    keep_alive()
-    print("🚀 BOT WITH COMPLETE INFO STARTED SUCCESSFULLY ✅")
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
-    app.run_polling()
+  # Render এর দেওয়া পোর্ট অথবা ডিফল্ট 5000 পোর্টে ফ্লাস্ক সার্ভার রান করা
+  port = int(os.environ.get('PORT', 5000))
+  app.run(host='0.0.0.0', port=port)
