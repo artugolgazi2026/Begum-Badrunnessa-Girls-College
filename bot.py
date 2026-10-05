@@ -19,9 +19,8 @@ from telegram.ext import (
 TOKEN = "8636909610:AAHMczAFyqNEQOSEkdH6hdQs7DdUOW8mmmI"
 BASE_URL = "https://everify.bdris.gov.bd/"
 
-# আপনার রেন্ডার বা সার্ভারের ডোমেন লিংক এখানে দিতে হবে (যেমন: https://your-app.onrender.com)
-# লোকাল টেস্ট করলে এটি ফাকা রাখতে পারেন বা লোকাল আইপি দিতে পারেন
-SERVER_URL = "https://your-app.onrender.com" 
+# আপনার দেওয়া রেন্ডারের আসল লিংক এখানে বসানো আছে
+SERVER_URL = "https://begum-badrunnessa-girls-college.onrender.com" 
 
 user_data = {}
 
@@ -161,7 +160,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             del user_data[user_id]
         return
 
-    # ধাপ ৩: ক্যাপচার উত্তর নিয়ে ফাইনাল সাবমিট করা (একই সেশন ব্যবহার করায় ১০০% ম্যাচ করবে)
+    # ধাপ ৩: ক্যাপচার উত্তর নিয়ে ফাইনাল সাবমিট করা
     elif data.get("step") == "captcha":
         captcha_text = text
         loading_msg = await message.reply_text("⏳ তথ্য যাচাই করা হচ্ছে...")
